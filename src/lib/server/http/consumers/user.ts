@@ -16,7 +16,36 @@ type LoginResponse = {
 
 const API_URL = process.env.NODE_ENV === 'production' ? '' : 'http://localhost:8080/api';
 
+/**
+ * Class for User HTTP requests targeting the Go rest API
+ * @abstract
+ * @class
+ * @example
+ * import { UserHTTP } from '$lib/server/http/consumers/user';
+ * const login = async ({ req, cookies }) => {
+ * 	const { username, password } = req.body;
+ * 	const response = await UserHTTP.login(username, password, cookies);
+ * 	return new Response(JSON.stringify(response), {
+ * 		status: response.status,
+ * });
+ * }
+ * export { login as POST };
+ * @method login
+ * @method register
+ * @method setCookie
+ *
+ */
 export abstract class UserHTTP extends BaseHTTP {
+	/**
+	 * Login a user
+	 * @public
+	 * @static
+	 * @param {string} username - The username of the user
+	 * @param {string} password - The password of the user
+	 * @param {Cookies} cookies - The cookies object
+	 * @returns {Promise<BaseHTTPResponse<LoginResponse>>}
+	 *
+	 */
 	public static async login(
 		username: string,
 		password: string,
@@ -39,6 +68,17 @@ export abstract class UserHTTP extends BaseHTTP {
 			return this.getErrorResponse({ error });
 		}
 	}
+
+	/**
+	 * Register a user
+	 * @public
+	 * @static
+	 * @param {string} username - The username of the user
+	 * @param {string} password - The password of the user
+	 * @param {Cookies} cookies - The cookies object
+	 * @returns {Promise<BaseHTTPResponse<LoginResponse>>}
+	 */
+
 	public static async register(
 		username: string,
 		password: string,
@@ -63,6 +103,14 @@ export abstract class UserHTTP extends BaseHTTP {
 		}
 	}
 
+	/**
+	 * Get the cookie
+	 * @private
+	 * @static
+	 * @param {Cookies} cookies - The cookies object
+	 * @returns {string}
+	 *
+	 */
 	private static setCookie(cookies: Cookies, payload: User) {
 		try {
 			const token = jwt.sign(payload, JWT_SECRET);
