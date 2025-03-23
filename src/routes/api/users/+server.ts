@@ -1,8 +1,6 @@
 import { UserHTTP } from '$lib/server/http/consumers/user';
 import { HttpStatusCodes } from '$lib/shared/http/enums';
 import type { Cookies } from '@sveltejs/kit';
-import jwt from 'jsonwebtoken';
-import { JWT_SECRET } from '$env/static/private';
 
 const register = async ({ request, cookies }: { request: Request; cookies: Cookies }) => {
 	const { username, password } = await request.json();
