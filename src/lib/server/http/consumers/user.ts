@@ -2,17 +2,8 @@ import type { Cookies } from '@sveltejs/kit';
 import { BaseHTTP } from '../baseHTTP';
 import { type BaseHTTPResponse } from '../types';
 import { JWT_SECRET } from '$env/static/private';
+import type { BaseUser, User, World } from '../types';
 import jwt from 'jsonwebtoken';
-
-type User = {
-	id: number;
-	username: string;
-};
-
-type LoginResponse = {
-	id: number;
-	username: string;
-};
 
 const API_URL = process.env.NODE_ENV === 'production' ? '' : 'http://localhost:8080/api';
 
@@ -43,18 +34,18 @@ export abstract class UserHTTP extends BaseHTTP {
 	 * @param {string} username - The username of the user
 	 * @param {string} password - The password of the user
 	 * @param {Cookies} cookies - The cookies object
-	 * @returns {Promise<BaseHTTPResponse<LoginResponse>>}
+	 * @returns {Promise<BaseHTTPResponse<BaseUser>>}
 	 *
 	 */
 	public static async login(
 		username: string,
 		password: string,
 		cookies: Cookies
-	): Promise<BaseHTTPResponse<LoginResponse>> {
+	): Promise<BaseHTTPResponse<BaseUser>> {
 		try {
 			const endpoint = `${API_URL}/auth/login`;
 			const response = await this.post(endpoint, { username, password });
-			return await this.handle<LoginResponse>('POST', endpoint, { username, password }, response)
+			return await this.handle<BaseUser>('POST', endpoint, { username, password }, response)
 				.then((response) => {
 					if (response.result) {
 						this.setCookie(cookies, response.result);
@@ -76,19 +67,19 @@ export abstract class UserHTTP extends BaseHTTP {
 	 * @param {string} username - The username of the user
 	 * @param {string} password - The password of the user
 	 * @param {Cookies} cookies - The cookies object
-	 * @returns {Promise<BaseHTTPResponse<LoginResponse>>}
+	 * @returns {Promise<BaseHTTPResponse<BaseUser>>}
 	 */
 
 	public static async register(
 		username: string,
 		password: string,
 		cookies: Cookies
-	): Promise<BaseHTTPResponse<LoginResponse>> {
+	): Promise<BaseHTTPResponse<BaseUser>> {
 		try {
 			const endpoint = `${API_URL}/users`;
 			const response = await this.post(endpoint, { username, password });
 
-			return await this.handle<LoginResponse>('POST', endpoint, { username, password }, response)
+			return await this.handle<BaseUser>('POST', endpoint, { username, password }, response)
 				.then((response) => {
 					if (response.result) {
 						this.setCookie(cookies, response.result);
@@ -104,14 +95,119 @@ export abstract class UserHTTP extends BaseHTTP {
 	}
 
 	/**
-	 * Get the cookie
+	 * Get the worlds of a user
+	 * @public
+	 * @static
+	 * @param {number} userID - The ID of the user
+	 * @returns {Promise<BaseHTTPResponse<User>>}
+	 *
+	 */
+	public static async getWorlds(userID: number): Promise<BaseHTTPResponse<User>> {
+		try {
+			const endpoint = `${API_URL}/users/${userID}/worlds`;
+			const response = await this.get(endpoint);
+			return await this.handle<User>('GET', endpoint, {}, response);
+		} catch (error) {
+			return this.getErrorResponse({ error });
+		}
+	}
+
+	/**
+	 * Add a world to a user
+	 * @public
+	 * @static
+	 * @param {number} userID - The Postgres ID of the user
+	 * @param {World} world - The world to add
+	 * @returns {Promise<BaseHTTPResponse<World>>}
+	 *
+	 */
+	public static async addWorld(
+		userID: number,
+		{ name, description, type, continents, oceans }: World
+	): Promise<BaseHTTPResponse<World>> {
+		try {
+			const endpoint = `${API_URL}/users/${userID}/world`;
+			const response = await this.post(endpoint, {
+				name,
+				description,
+				type,
+				continents,
+				oceans
+			});
+			return await this.handle<World>(
+				'POST',
+				endpoint,
+				{
+					name,
+					description,
+					type,
+					continents,
+					oceans
+				},
+				response
+			);
+		} catch (error) {
+			return this.getErrorResponse({ error });
+		}
+	}
+
+	/**
+	 * Remove a world from a user
+	 * @public
+	 * @static
+	 * @param {number} userID - The Postgres ID of the user
+	 * @param {number} worldID - The Neo4j ID of the world
+	 * @returns {Promise<BaseHTTPResponse<World>>}
+	 *
+	 */
+	public static async removeWorld(
+		userID: number,
+		worldID: number
+	): Promise<BaseHTTPResponse<World>> {
+		try {
+			const endpoint = `${API_URL}/users/${userID}/world/${worldID}`;
+			const response = await this.delete(endpoint);
+			return await this.handle<World>('DELETE', endpoint, {}, response);
+		} catch (error) {
+			return this.getErrorResponse({ error });
+		}
+	}
+
+	public static async updateWorld(
+		userID: number,
+		{ id, name, description, type }: World
+	): Promise<BaseHTTPResponse<World>> {
+		try {
+			const endpoint = `${API_URL}/users/${userID}/world`;
+			const response = await this.put(endpoint, {
+				name,
+				description,
+				type
+			});
+			return await this.handle<World>(
+				'PUT',
+				endpoint,
+				{
+					name,
+					description,
+					type
+				},
+				response
+			);
+		} catch (error) {
+			return this.getErrorResponse({ error });
+		}
+	}
+
+	/**
+	 * set the cookie
 	 * @private
 	 * @static
 	 * @param {Cookies} cookies - The cookies object
 	 * @returns {string}
 	 *
 	 */
-	private static setCookie(cookies: Cookies, payload: User) {
+	private static setCookie(cookies: Cookies, payload: BaseUser) {
 		try {
 			const token = jwt.sign(payload, JWT_SECRET);
 			cookies.set('token', token, {
