@@ -119,6 +119,13 @@ export abstract class BaseHTTP {
 			return this.getUnauthorizedResponse();
 		}
 
+		if (response.status === HttpStatusCodes.NOT_FOUND) {
+			return this.getErrorResponse({
+				error: new Error('Resource not found'),
+				statusCode: response.status
+			});
+		}
+
 		if (response.status >= HttpStatusCodes.BAD_REQUEST) {
 			return this.getErrorResponse({
 				error: this.createHTTPError(method, endpoint, request, response),
@@ -140,7 +147,9 @@ export abstract class BaseHTTP {
 	static getSuccessResponse<T>(result: T): BaseHTTPResponse<T> {
 		return {
 			isSuccessful: true,
-			result,
+			result: {
+				data: result
+			},
 			statusCode: HttpStatusCodes.OK
 		};
 	}

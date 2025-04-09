@@ -1,7 +1,9 @@
 export type BaseHTTPResponse<T> = {
 	isSuccessful: boolean;
 	message?: string | null;
-	result?: T;
+	result?: {
+		data: T;
+	};
 	statusCode: number;
 };
 
