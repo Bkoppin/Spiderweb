@@ -8,7 +8,7 @@ export type BaseHTTPResponse<T> = {
 };
 
 export interface BaseUser {
-	id?: string | number;
+	id?: string;
 	username: string;
 }
 
