@@ -1,4 +1,5 @@
-import { QueryClient } from './queryClient';
+import { QueryClient, type CachedQueryState } from './queryClient';
+import { getContext } from 'svelte';
 
 interface QueryOptions<T> {
 	queryFn: () => Promise<T>;
@@ -11,130 +12,158 @@ interface QueryOptions<T> {
 type QueryState<T> = {
 	readonly data: T | undefined;
 	readonly isLoading: boolean;
+	readonly isFetching: boolean;
 	readonly isError: boolean;
 	readonly error: Error | null;
-	refetch: () => void;
+	readonly status: 'loading' | 'error' | 'success' | 'idle';
+	refetch: () => Promise<void>;
 	invalidate: () => void;
 };
 
-type FetchStatus = 'idle' | 'fetching' | 'success' | 'error';
+type FetchStatus = 'idle' | 'fetching' | 'paused';
+
+function isCacheFresh<T>(cachedState: CachedQueryState<T> | undefined, staleTime: number): boolean {
+	if (!cachedState?.data || cachedState?.error) return false;
+	if (staleTime <= 0) return false;
+	const now = Date.now();
+	const cacheTimestamp = cachedState.timestamp || 0;
+	return now - cacheTimestamp <= staleTime;
+}
+
+function getDerivedState<T>(
+	cachedState: CachedQueryState<T> | undefined,
+	options: { enabled: boolean; staleTime: number }
+): {
+	data: T | undefined;
+	status: 'success' | 'error' | 'idle';
+	error: Error | null;
+	isStale: boolean;
+} {
+	const { enabled, staleTime } = options;
+	const data = cachedState?.data;
+	const error = cachedState?.error || null;
+
+	if (!enabled) {
+		const status = error ? 'error' : data !== undefined ? 'success' : 'idle';
+		return { data, error, isStale: false, status };
+	}
+	if (error) {
+		return { data, error, isStale: false, status: 'error' };
+	}
+	if (data !== undefined) {
+		const isFresh = isCacheFresh(cachedState, staleTime);
+		return { data, error: null, isStale: !isFresh, status: 'success' };
+	}
+	return { data: undefined, error: null, isStale: true, status: 'idle' };
+}
+
+function getPublicStatus(
+	fetchStatus: FetchStatus,
+	localData: unknown | undefined,
+	localError: Error | null
+): 'loading' | 'error' | 'success' | 'idle' {
+	if (fetchStatus === 'fetching') return 'loading';
+	if (localError) return 'error';
+	if (localData !== undefined) return 'success';
+	return 'idle';
+}
 
 export function useQuery<T>(key: string, options: QueryOptions<T>): QueryState<T> {
 	const { queryFn, enabled = true, staleTime = 0, onSuccess, onError } = options;
 
-	let data = $state<T | undefined>(undefined);
-	let isLoading = $state(false);
-	let isError = $state(false);
-	let error = $state<Error | null>(null);
+	let localData = $state<T | undefined>(undefined);
+	let localError = $state<Error | null>(null);
 	let fetchStatus = $state<FetchStatus>('idle');
-	let unsubscribe: void | (() => void);
+	let unsubscribe: (() => void) | undefined = undefined;
 
-	const initialCachedState = QueryClient.getQueryData<T>(key);
-	const initialDataIsFresh =
-		initialCachedState &&
-		(staleTime === 0 || Date.now() - (initialCachedState.timestamp || 0) <= staleTime);
-
-	if (enabled && initialDataIsFresh) {
-		data = initialCachedState.data;
-		fetchStatus = 'success';
-		isLoading = false;
-	} else if (enabled) {
-		isLoading = !initialCachedState?.data;
-		fetchStatus = 'idle';
-	} else {
-		fetchStatus = 'idle';
-		isLoading = false;
+	const QueryClient = getContext<QueryClient>('queryClient');
+	if (!QueryClient) {
+		throw new Error('QueryClient not found in context. Did you use QueryClientProvider?');
 	}
 
 	const fetchData = async () => {
 		if (fetchStatus === 'fetching' || !enabled) return;
-
-		isLoading = true;
-		isError = false;
-		error = null;
 		fetchStatus = 'fetching';
-
+		localError = null;
 		try {
-			const result = await queryFn();
-			QueryClient.setQueryData(key, result);
-			onSuccess?.(result);
+			const res = await queryFn();
+			QueryClient.setQueryData(key, res, null);
+			localData = res;
+			localError = null;
+			fetchStatus = 'paused';
+			onSuccess?.(res);
 		} catch (err) {
-			error = err as Error;
-			isError = true;
-			isLoading = false;
-			fetchStatus = 'error';
-			onError?.(err as Error);
+			const error = err as Error;
+			localError = error;
+			const currentCachedState = QueryClient.getQueryData<T>(key);
+			QueryClient.setQueryData(key, currentCachedState?.data as T, error);
+			fetchStatus = 'idle';
+			onError?.(error);
 		}
 	};
 
 	const invalidate = () => {
 		QueryClient.invalidateQuery(key);
-		fetchStatus = 'idle';
-		isLoading = !QueryClient.getQueryData(key)?.data;
-		isError = false;
-		error = null;
+		if (fetchStatus !== 'fetching') {
+			fetchStatus = 'idle';
+		}
 	};
 
 	const refetch = async () => {
-		if (fetchStatus !== 'fetching') {
-			await fetchData();
+		if (fetchStatus === 'paused') {
+			fetchStatus = 'idle';
 		}
 	};
 
 	$effect(() => {
+		const cachedState = QueryClient.getQueryData<T>(key);
+		const derived = getDerivedState(cachedState, { enabled, staleTime });
 		let needsFetch = false;
+		const currentEffectFetchStatus = fetchStatus;
 
-		if (enabled) {
-			const currentCachedState = QueryClient.getQueryData<T>(key);
-			const cacheIsStale =
-				!currentCachedState ||
-				(staleTime > 0 && Date.now() - (currentCachedState.timestamp || 0) > staleTime);
-
-			if (fetchStatus === 'idle' && cacheIsStale) {
-				needsFetch = true;
-			} else if (fetchStatus === 'success' && cacheIsStale && staleTime > 0) {
-				needsFetch = true;
-			} else {
-				needsFetch = false;
-				if (fetchStatus !== 'fetching') {
-					if (!cacheIsStale || fetchStatus === 'error') {
-						if (isLoading) isLoading = false;
-					}
-					if (!cacheIsStale && currentCachedState && data !== currentCachedState.data) {
-						data = currentCachedState.data;
-						if (fetchStatus !== 'success' && fetchStatus !== 'error') fetchStatus = 'success';
-					}
-				}
+		if (currentEffectFetchStatus !== 'fetching') {
+			let syncDataFromCache = true;
+			if (currentEffectFetchStatus === 'paused') {
+				syncDataFromCache = false;
+			} else if (derived.data === undefined && localData !== undefined) {
+				syncDataFromCache = false;
 			}
 
-			if (!unsubscribe) {
-				unsubscribe = QueryClient.subscribeData<T>(key, (newData) => {
-					const currentStatus = fetchStatus;
+			localError = derived.error;
 
-					data = newData;
-
-					if (currentStatus === 'fetching') {
-						isLoading = false;
-						fetchStatus = 'success';
-						isError = false;
-						error = null;
-					} else if (newData === undefined && data !== undefined) {
-						fetchStatus = 'idle';
-					}
-				});
+			if (syncDataFromCache) {
+				localData = derived.data;
 			}
-		} else {
-			needsFetch = false;
-			if (isLoading) isLoading = false;
-			if (fetchStatus !== 'idle') fetchStatus = 'idle';
-			if (unsubscribe) {
-				unsubscribe();
-				unsubscribe = undefined;
+
+			const isStale = enabled && derived.isStale;
+			needsFetch = isStale && currentEffectFetchStatus !== 'paused' && derived.status !== 'error';
+
+			let nextStatus: FetchStatus = 'idle';
+			if (enabled && !needsFetch && localError === null) {
+				nextStatus = 'paused';
+			}
+
+			if (fetchStatus !== nextStatus) {
+				fetchStatus = nextStatus;
 			}
 		}
 
-		if (needsFetch && fetchStatus !== 'fetching' && fetchStatus !== 'error') {
-			fetchData();
+		if (needsFetch && fetchStatus === 'idle') {
+			const latestCache = QueryClient.getQueryData<T>(key);
+			if (!latestCache?.error) {
+				fetchData();
+			} else {
+				localError = latestCache.error;
+				if (fetchStatus !== 'idle') fetchStatus = 'idle';
+			}
+		}
+
+		if (enabled && !unsubscribe) {
+			unsubscribe = QueryClient.subscribeData<T>(key, () => {});
+		}
+		if (!enabled && unsubscribe) {
+			unsubscribe();
+			unsubscribe = undefined;
 		}
 
 		return () => {
@@ -147,16 +176,22 @@ export function useQuery<T>(key: string, options: QueryOptions<T>): QueryState<T
 
 	return {
 		get data() {
-			return data;
+			return localData;
 		},
 		get isLoading() {
-			return isLoading;
+			return fetchStatus === 'fetching';
+		},
+		get isFetching() {
+			return fetchStatus === 'fetching';
 		},
 		get isError() {
-			return isError;
+			return localError !== null;
 		},
 		get error() {
-			return error;
+			return localError;
+		},
+		get status() {
+			return getPublicStatus(fetchStatus, localData, localError);
 		},
 		refetch,
 		invalidate
