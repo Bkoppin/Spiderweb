@@ -5,111 +5,94 @@ type User = {
 	id: number;
 };
 
-export type AuthStore = {
-	isLoggedIn: Writable<boolean>;
+interface AuthState {
+	isLoggedIn: boolean;
+	user: User | null;
+}
+
+export interface AuthStore {
+	subscribe: Writable<AuthState>['subscribe'];
 	checkAuth: () => Promise<void>;
 	login: (username: string, password: string) => Promise<void>;
 	register: (username: string, password: string) => Promise<void>;
 	logout: () => Promise<void>;
-	user: Writable<null | User>;
-	subscribe: (
-		run: (value: null | User) => void,
-		invalidate?: (value?: null | User) => void
-	) => () => void;
-};
+}
 
-/**
- * Authentication store to manage user authentication, keeps track of the user's login status, as well as the currently logged in user
- * @returns {AuthStore}
- * @property {Writable<boolean>} isLoggedIn - The user's login status
- * @property {() => Promise<void>} checkAuth - Function to check if the user is authenticated
- * @property {(username: string, password: string) => Promise<void>} login - Function to log in the user
- * @property {(username: string, password: string) => Promise<void>} register - Function to register the user
- * @property {() => Promise<void>} logout - Function to log out the user
- * @property {Writable<null | User>} user - The currently logged in user
- * @property {(run: (value: null | User) => void, invalidate?: (value?: null | User) => void) => () => void} subscribe - Function to subscribe to the user store
- *
- * @example
- * <script>
- * import { auth } from '$lib/client/stores/auth';
- * import { onMount } from 'svelte';
- *  const handleLogin = async () => {
- * 		await auth.login('username', 'password');
- * 	};
- * </script>
- * <button on:click={handleLogin}>Login</button>
- * <p>{$auth ? $auth.username : 'Not logged in'}</p>
- */
 export function createAuthStore(): AuthStore {
-	const isLoggedIn = writable(false);
-	const user = writable(null);
+	const store = writable<AuthState>({
+		isLoggedIn: false,
+		user: null
+	});
 
-	/**
-	 * Function to check if the user is authenticated
-	 * @returns {Promise<void>}
-	 */
+	const { subscribe, set } = store;
 
 	const checkAuth = async () => {
-		const response = await fetch('/api/users/me', {
-			method: 'GET',
-			credentials: 'include'
-		});
+		try {
+			const response = await fetch('/api/users/me', {
+				method: 'GET',
+				credentials: 'include'
+			});
 
-		if (response.status === 200) {
-			isLoggedIn.set(true);
-			user.set(await response.json());
-		} else {
-			isLoggedIn.set(false);
-			user.set(null);
+			if (response.ok) {
+				const userData: User = await response.json();
+				set({ isLoggedIn: true, user: userData });
+			} else {
+				set({ isLoggedIn: false, user: null });
+			}
+		} catch (error) {
+			console.error('Auth check failed:', error);
+			set({ isLoggedIn: false, user: null });
 		}
 	};
 
-	/**
-	 * Function to log in the user
-	 * @param {string} username - The username of the user
-	 * @param {string} password - The password of the user
-	 * @returns {Promise<void>}
-	 */
 	const login = async (username: string, password: string) => {
-		const response = await fetch('/api/auth/login', {
-			method: 'POST',
-			headers: {
-				'Content-Type': 'application/json'
-			},
-			body: JSON.stringify({ username, password })
-		});
-
-		if (response.status === 200) {
-			isLoggedIn.set(true);
-			const data = await response.json();
-			user.set(data.result);
-		} else {
-			isLoggedIn.set(false);
-			user.set(null);
+		try {
+			const response = await fetch('/api/auth/login', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json'
+				},
+				body: JSON.stringify({ username, password })
+			});
+			if (response.ok) {
+				const data = await response.json();
+				if (data && data.result) {
+					set({ isLoggedIn: true, user: data.result.data as User });
+				} else {
+					console.error('Login succeeded but response data format was unexpected:', data);
+					set({ isLoggedIn: false, user: null });
+					throw new Error('Login succeeded but received invalid user data.');
+				}
+			} else {
+				const errorData = await response.json();
+				console.error('Login failed:', errorData);
+				set({ isLoggedIn: false, user: null });
+				throw new Error(`Login failed with status: ${response.status}`);
+			}
+		} catch (error) {
+			console.error('Login request failed:', error);
+			set({ isLoggedIn: false, user: null });
+			throw new Error('Login request failed');
 		}
 	};
 
-	/**
-	 * Function to log out the user
-	 * @returns {Promise
-	 */
 	const logout = async () => {
-		const response = await fetch('/api/auth/logout', {
-			method: 'POST'
-		});
+		try {
+			const response = await fetch('/api/auth/logout', {
+				method: 'POST'
+			});
 
-		if (response.status === 200) {
-			isLoggedIn.set(false);
-			user.set(null);
+			set({ isLoggedIn: false, user: null });
+
+			if (!response.ok) {
+				console.warn(`Server logout failed with status: ${response.status}`);
+			}
+		} catch (error) {
+			console.error('Logout request failed:', error);
+			set({ isLoggedIn: false, user: null });
 		}
 	};
 
-	/**
-	 * Function to register the user
-	 * @param {string} username - The username of the user
-	 * @param {string} password - The password of the user
-	 * @returns {Promise<void>}
-	 */
 	const register = async (username: string, password: string) => {
 		const response = await fetch('/api/users', {
 			method: 'POST',
@@ -119,26 +102,27 @@ export function createAuthStore(): AuthStore {
 			body: JSON.stringify({ username, password })
 		});
 
-		if (response.status === 200) {
-			isLoggedIn.set(true);
+		if (response.ok) {
 			const data = await response.json();
-			user.set(data.result);
+			if (data && data.result) {
+				set({ isLoggedIn: true, user: data.result as User });
+			} else {
+				console.error('Registration succeeded but response data format was unexpected:', data);
+				set({ isLoggedIn: false, user: null });
+				throw new Error('Registration succeeded but received invalid user data.');
+			}
 		} else {
-			isLoggedIn.set(false);
-			user.set(null);
+			set({ isLoggedIn: false, user: null });
+			throw new Error(`Registration failed with status: ${response.status}`);
 		}
 	};
 
-	const subscribe = user.subscribe;
-
 	return {
-		isLoggedIn,
+		subscribe,
 		checkAuth,
 		login,
 		logout,
-		register,
-		user,
-		subscribe
+		register
 	};
 }
 

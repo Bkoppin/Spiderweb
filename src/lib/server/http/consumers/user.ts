@@ -79,7 +79,7 @@ export abstract class UserHTTP extends BaseHTTP {
 		cookies: Cookies
 	): Promise<BaseHTTPResponse<BaseUser>> {
 		try {
-			const endpoint = `${API_URL}/users`;
+			const endpoint = `${API_URL}/user`;
 			const response = await this.post(endpoint, { username, password });
 
 			return await this.handle<BaseUser>('POST', endpoint, { username, password }, response)

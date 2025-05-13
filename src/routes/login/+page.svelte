@@ -1,14 +1,23 @@
 <script lang="ts">
- import { auth } from "$lib/client/stores/auth";
+  import { auth } from "$lib/client/stores/auth";
   import { onMount } from "svelte";
 
- const handleLogin = async (event: SubmitEvent) => {
-   event.preventDefault();
-   const form = event.target as HTMLFormElement;
-   const username = form.username.value;
-   const password = form.password.value;
-   await auth.login(username, password);
- };
+  $: console.log("Component: Detected $auth change:", $auth);
+
+  const handleLogin = async (event: SubmitEvent) => {
+    event.preventDefault();
+    const form = event.target as HTMLFormElement;
+    const username = form.username.value;
+    const password = form.password.value;
+    console.log("Component: Calling auth.login...");
+    try {
+        await auth.login(username, password);
+        console.log("Component: auth.login finished.");
+     } catch (error) {
+        console.error("Component: Login failed:", error);
+        alert(`Login failed: ${error.message}`);
+     }
+  };
 
   const handleRegister = async (event: SubmitEvent) => {
     event.preventDefault();
@@ -18,15 +27,20 @@
     await auth.register(username, password);
   };
 
-  onMount(auth.checkAuth);
-
-
-  
+  onMount(async () => {
+    console.log("Component: Mounting, calling checkAuth...");
+    await auth.checkAuth();
+  });
 
 </script>
 
 <main>
-  <p>Logged in as { $auth ? $auth?.username : "Guest"}</p>
+  {#if $auth?.user}
+    <h1>Welcome, {$auth?.user.username}</h1>
+  {:else}
+    <h1>Please log in or register</h1>
+  {/if}
+
   <h1>Login</h1>
   <form onsubmit={handleLogin} class="flex flex-col">
     <label for="username">Username</label>

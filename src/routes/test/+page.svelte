@@ -9,13 +9,12 @@
     name: z.string(),
   });
 
-  const testArraySchema = z.array(testSchema);
-
   let name = $state("");
 
-  let delId = $state(0);
+  let delId = $state("");
 
   async function fetchTest() {
+    try {
     const response = await fetch("/api/test", {
       method: "GET",
       headers: {
@@ -24,10 +23,16 @@
     });
 
     const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || "Failed to fetch data");
+    }
+    return data
+  } catch (error) {
+    console.error("Error fetching data:", error);
+    throw error;
+  }
 
-    const parsedData = testArraySchema.parse(data);
     
-    return parsedData;
   }
 
   async function simulateMutation(id: number, name: string) : Promise<z.infer<typeof testSchema>> {
@@ -56,7 +61,7 @@
     return parsedData;
   }
 
-  async function SimulateDelete(id: number) : Promise<z.infer<typeof testSchema>> {
+  async function SimulateDelete(id: string) : Promise<z.infer<typeof testSchema>> {
     const response = await fetch("/api/test", {
       method: "DELETE",
       headers: {
@@ -71,7 +76,6 @@
 
   const post = useMutation({
     mutationFn: simulatePost,
-    invalidateKeys: ["test"],
     onError: (error) => {
       console.error("Error posting data:", error);
     },
@@ -82,7 +86,6 @@
 
   const deleteName = useMutation({
     mutationFn: SimulateDelete,
-    invalidateKeys: ["test"],
     onError: (error) => {
       console.error("Error deleting data:", error);
     },
@@ -100,8 +103,9 @@
       console.error("Error fetching data:", error);
     },
     onSuccess: (data) => {
-      console.log("Data fetched successfully:", data);
+      console.log("Data fetched successfully:", data)
     },
+    staleTime: 1
   });
 
   const mutation = useMutation({
@@ -135,7 +139,7 @@
 
   function deleteBlur(event: FocusEvent) {
     const input = event.target as HTMLInputElement;
-    delId = parseInt(input.value);
+    delId = input.value;
   }
 
   function handlePost() {
@@ -144,7 +148,7 @@
   }
 
   function handleDelete() {
-    deleteName.mutate(1);
+    deleteName.mutate(delId);
     query.invalidate();
   }
 
@@ -156,7 +160,7 @@
 {:else if query.isError}
   <p>Error: {query.error}</p>
 {:else if query.data}
-  <p>Data: {JSON.stringify(query.data)}</p>
+  <p>Data: {JSON.stringify(query.data.result.data)}</p>
 {:else}
   <p>No data loaded.</p>
 {/if}
@@ -166,4 +170,4 @@
 <button onclick={handlePost}>POST</button>
 <button onclick={handleDelete}>DELETE</button>
 <input type="text" value={name} onblur={blurHandler} placeholder="Name" />
-<input type="number" value={delId} onblur={deleteBlur} placeholder="ID" />
+<input type="text" value={delId} onblur={deleteBlur} placeholder="ID" />
