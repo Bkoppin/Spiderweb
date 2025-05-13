@@ -62,13 +62,15 @@ function getPublicStatus(
 	localData: unknown | undefined,
 	localError: Error | null
 ): 'loading' | 'error' | 'success' | 'idle' {
-	if (fetchStatus === 'fetching') return 'loading';
+	if (fetchStatus === 'fetching') {
+		return localData !== undefined ? 'success' : 'loading';
+	}
 	if (localError) return 'error';
 	if (localData !== undefined) return 'success';
 	return 'idle';
 }
 
-export function useQuery<T>(key: string, options: QueryOptions<T>): QueryState<T> {
+export function useQuery<T>(key: string, options: QueryOptions<T>) {
 	const { queryFn, enabled = true, staleTime = 0, onSuccess, onError } = options;
 
 	let localData = $state<T | undefined>(undefined);
@@ -83,8 +85,10 @@ export function useQuery<T>(key: string, options: QueryOptions<T>): QueryState<T
 
 	const fetchData = async () => {
 		if (fetchStatus === 'fetching' || !enabled) return;
+
 		fetchStatus = 'fetching';
 		localError = null;
+
 		try {
 			const res = await queryFn();
 			QueryClient.setQueryData(key, res, null);
@@ -104,7 +108,7 @@ export function useQuery<T>(key: string, options: QueryOptions<T>): QueryState<T
 
 	const invalidate = () => {
 		QueryClient.invalidateQuery(key);
-		if (fetchStatus !== 'fetching') {
+		if (fetchStatus === 'paused') {
 			fetchStatus = 'idle';
 		}
 	};
@@ -123,6 +127,7 @@ export function useQuery<T>(key: string, options: QueryOptions<T>): QueryState<T
 
 		if (currentEffectFetchStatus !== 'fetching') {
 			let syncDataFromCache = true;
+
 			if (currentEffectFetchStatus === 'paused') {
 				syncDataFromCache = false;
 			} else if (derived.data === undefined && localData !== undefined) {
@@ -132,7 +137,9 @@ export function useQuery<T>(key: string, options: QueryOptions<T>): QueryState<T
 			localError = derived.error;
 
 			if (syncDataFromCache) {
-				localData = derived.data;
+				if (localData !== derived.data) {
+					localData = derived.data;
+				}
 			}
 
 			const isStale = enabled && derived.isStale;
@@ -179,7 +186,7 @@ export function useQuery<T>(key: string, options: QueryOptions<T>): QueryState<T
 			return localData;
 		},
 		get isLoading() {
-			return fetchStatus === 'fetching';
+			return fetchStatus === 'fetching' && localData === undefined;
 		},
 		get isFetching() {
 			return fetchStatus === 'fetching';
