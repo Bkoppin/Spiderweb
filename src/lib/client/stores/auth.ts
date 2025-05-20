@@ -1,3 +1,4 @@
+import { invalidateAll } from '$app/navigation';
 import { writable, type Writable } from 'svelte/store';
 
 type User = {
@@ -83,6 +84,7 @@ export function createAuthStore(): AuthStore {
 			});
 
 			set({ isLoggedIn: false, user: null });
+			invalidateAll();
 
 			if (!response.ok) {
 				console.warn(`Server logout failed with status: ${response.status}`);

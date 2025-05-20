@@ -158,7 +158,7 @@
 {#if query.isLoading}
   <p>Loading...</p>
 {:else if query.isError}
-  <p>Error: {query.error}</p>
+  <p>Error: {query.error?.message}</p>
 {:else if query.data}
   <p>Data: {JSON.stringify(query.data.result.data)}</p>
 {:else}
