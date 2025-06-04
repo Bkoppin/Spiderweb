@@ -1,10 +1,22 @@
 <script>
     import { onMount } from "svelte";
+    import { page } from "$app/state";
+    import { useQuery } from "$lib/client/query.svelte";
+    import { useMutation } from "$lib/client/mutation.svelte";
+    import { getUserWorlds } from "$lib/client/queries/worlds";
 
+    console.log(page.data.user);
     const initData = {
       nodes: [{ id: 0 }],
       links: [],
     };
+
+    const query = useQuery("userWorlds",
+      {
+        queryFn: () => getUserWorlds(page.data.user.userID),
+        
+      }
+    )
 
     /**
      * @type {import("3d-force-graph").ForceGraph3DInstance<import("three-forcegraph").NodeObject,
@@ -86,4 +98,13 @@
   }
 </style>
 
-<div id="graph-3d"></div>
+{#if query.isLoading}
+  <p>Loading...</p>
+{:else if query.error}
+  <p>Error loading data: {query.error.message}</p>
+{:else if !query.data || query.data.length === 0}
+  <p>No worlds found for this user.</p>
+  <div id="graph-3d"></div>
+{/if}
+
+  
