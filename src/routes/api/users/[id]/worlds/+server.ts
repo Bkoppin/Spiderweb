@@ -11,14 +11,23 @@ const getWorlds = async ({ params }: { params: { id: number } }) => {
 				'Content-Type': 'application/json'
 			}
 		});
-	} else {
-		return new Response(JSON.stringify({ error: 'Failed to fetch worlds' }), {
-			status: res.statusCode,
+	}
+
+	if (res.statusCode === 404) {
+		return new Response(JSON.stringify([]), {
+			status: 200,
 			headers: {
 				'Content-Type': 'application/json'
 			}
 		});
 	}
+
+	return new Response(JSON.stringify({ error: 'Failed to fetch worlds' }), {
+		status: res.statusCode,
+		headers: {
+			'Content-Type': 'application/json'
+		}
+	});
 };
 
 export { getWorlds as GET };
