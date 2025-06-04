@@ -2,23 +2,12 @@ import { QueryClient, type CachedQueryState } from './queryClient';
 import { getContext } from 'svelte';
 
 interface QueryOptions<T> {
-	queryFn: () => Promise<T>;
+	queryFn: (...args: any[]) => Promise<T>;
 	enabled?: boolean;
 	staleTime?: number;
 	onSuccess?: (data: T) => void;
 	onError?: (error: Error) => void;
 }
-
-type QueryState<T> = {
-	readonly data: T | undefined;
-	readonly isLoading: boolean;
-	readonly isFetching: boolean;
-	readonly isError: boolean;
-	readonly error: Error | null;
-	readonly status: 'loading' | 'error' | 'success' | 'idle';
-	refetch: () => Promise<void>;
-	invalidate: () => void;
-};
 
 type FetchStatus = 'idle' | 'fetching' | 'paused';
 
